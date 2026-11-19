@@ -222,7 +222,22 @@ alter table public.notifications enable row level security;
 alter table public.audit_logs enable row level security;
 
 create policy "profiles_select_self_or_admin" on public.profiles for select to authenticated using (id = auth.uid() or public.is_admin_or_owner());
-create policy "profiles_update_self" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid() and role = (select p.role from public.profiles p where p.id = auth.uid()));
+create or replace function public.prevent_self_role_change()
+returns trigger language plpgsql security definer set search_path = public
+as $
+begin
+  if auth.uid() is not null and new.role is distinct from old.role
+     and not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin','owner')) then
+    raise exception 'Role changes require an administrator';
+  end if;
+  return new;
+end;
+$;
+drop trigger if exists protect_profile_role on public.profiles;
+create trigger protect_profile_role before update on public.profiles
+for each row execute procedure public.prevent_self_role_change();
+
+create policy "profiles_update_self" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 create policy "wallet_select_self_or_admin" on public.wallets for select to authenticated using (user_id = auth.uid() or public.is_admin_or_owner());
 create policy "wallet_transactions_select_self_or_admin" on public.wallet_transactions for select to authenticated using (user_id = auth.uid() or public.is_admin_or_owner());
 create policy "plans_read_active_or_admin" on public.plans for select to authenticated using (active or public.is_admin_or_owner());
