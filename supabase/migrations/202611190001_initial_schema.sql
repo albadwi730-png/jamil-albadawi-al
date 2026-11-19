@@ -224,7 +224,7 @@ alter table public.audit_logs enable row level security;
 create policy "profiles_select_self_or_admin" on public.profiles for select to authenticated using (id = auth.uid() or public.is_admin_or_owner());
 create or replace function public.prevent_self_role_change()
 returns trigger language plpgsql security definer set search_path = public
-as $
+as $$
 begin
   if auth.uid() is not null and new.role is distinct from old.role
      and not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin','owner')) then
@@ -232,7 +232,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 drop trigger if exists protect_profile_role on public.profiles;
 create trigger protect_profile_role before update on public.profiles
 for each row execute procedure public.prevent_self_role_change();
